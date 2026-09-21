@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-MAX_CONTEXT_CHARACTERS = 55_000
+MAX_CONTEXT_CHARACTERS = 100_000
 
 IGNORED_LINE_PATTERNS = (
     re.compile(r"access to this page requires authorization", re.I),

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from agent.models import LearnResponse
 from agent.orchestrator import MicrosoftLearnAgent
-from services.knowledge_generator import AzureOpenAIKnowledgeGenerator
+from services.knowledge_generator import AzureOpenAIKnowledgeGenerator, ExtractiveKnowledgeGenerator, select_grounding_chunks
 
 LEARN_URL = "https://learn.microsoft.com/en-us/azure/azure-functions/functions-overview"
 SECOND_LEARN_URL = "https://learn.microsoft.com/en-us/azure/azure-functions/functions-scale"
@@ -63,6 +63,12 @@ def test_broad_product_query_prioritizes_landing_page_and_keeps_relevant_sources
             "score": 1.0,
         },
         {
+            "title": "What is Azure Functions?",
+            "url": LEARN_URL,
+            "description": "Azure Functions is a serverless compute service.",
+            "score": 0.5,
+        },
+        {
             "title": "Azure Functions documentation",
             "url": "https://learn.microsoft.com/en-us/azure/azure-functions/",
             "description": "Azure Functions product documentation.",
@@ -72,8 +78,53 @@ def test_broad_product_query_prioritizes_landing_page_and_keeps_relevant_sources
 
     sources = agent.select_sources(candidates, "Azure Functions", 5)
 
-    assert len(sources) == 2
+    assert len(sources) == 3
     assert sources[0]["url"] == "https://learn.microsoft.com/en-us/azure/azure-functions/"
+    assert sources[1]["url"] == LEARN_URL
+
+
+def test_specific_query_does_not_fill_sources_with_unrelated_results():
+    agent = MicrosoftLearnAgent(search_tool=FakeSearch(), reader_tool=FakeReader())
+    candidates = [
+        {
+            "title": "Create an autoscale scaling plan for Azure Virtual Desktop",
+            "url": "https://learn.microsoft.com/en-us/azure/virtual-desktop/autoscale-create-assign-scaling-plan",
+            "description": "Configure Azure Virtual Desktop autoscale scaling plans.",
+            "score": 1.0,
+        },
+        {
+            "title": "Azure App Service plans",
+            "url": "https://learn.microsoft.com/en-us/azure/app-service/overview-hosting-plans",
+            "description": "Choose an App Service plan.",
+            "score": 0.5,
+        },
+    ]
+
+    sources = agent.select_sources(candidates, "Azure Virtual Desktop autoscale scaling plans", 5)
+
+    assert [source["title"] for source in sources] == ["Create an autoscale scaling plan for Azure Virtual Desktop"]
+
+
+def test_specific_query_filters_incidental_mentions_in_retrieved_pages():
+    agent = MicrosoftLearnAgent(search_tool=FakeSearch(), reader_tool=FakeReader())
+    documents = [
+        {
+            "title": "Managed identities for Azure resources",
+            "url": "https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview",
+            "headings": ["Managed identity types", "Use managed identities"],
+            "content": "Managed identity " * 30,
+        },
+        {
+            "title": "Develop Azure Functions locally",
+            "url": "https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local",
+            "headings": ["Develop locally", "Install Core Tools"],
+            "content": ("Azure Functions local development. " * 200) + "Managed identity can be used.",
+        },
+    ]
+
+    selected = agent.select_documents(documents, "Azure Functions managed identity")
+
+    assert [document["title"] for document in selected] == ["Managed identities for Azure resources"]
 
 
 def test_agent_initializes_without_api_keys(monkeypatch):
@@ -130,3 +181,37 @@ def test_azure_generator_falls_back_when_model_output_is_invalid():
     response = generator.generate("Azure Functions", "Study Notes", [FakeReader().get_page(LEARN_URL)])
 
     assert response.summary == "Azure Functions runs event-driven code."
+
+
+def test_grounding_chunks_are_interleaved_across_documents():
+    documents = [
+        {
+            "title": title,
+            "url": url,
+            "headings": ["One", "Two"],
+            "content": f"## One\nAzure Functions {title} first.\n## Two\nAzure Functions {title} second.",
+        }
+        for title, url in (("Overview", LEARN_URL), ("Hosting", SECOND_LEARN_URL))
+    ]
+
+    chunks = select_grounding_chunks("Azure Functions", documents, per_document=2)
+
+    assert [chunk["title"] for chunk in chunks] == ["Overview", "Hosting", "Overview", "Hosting"]
+
+
+def test_definition_prefers_introductory_explanation_over_later_configuration():
+    document = {
+        "title": "Create an autoscale scaling plan",
+        "url": "https://learn.microsoft.com/en-us/azure/virtual-desktop/autoscale",
+        "headings": ["Overview", "Ramp-down"],
+        "content": (
+            "## Overview\nAutoscale lets you scale session host virtual machines according to schedule.\n"
+            "## Ramp-down\nThe capacity threshold is the percentage used by the scaling plan."
+        ),
+    }
+
+    response = ExtractiveKnowledgeGenerator().generate(
+        "Azure Virtual Desktop autoscale scaling plans", "Study Notes", [document]
+    )
+
+    assert response.definition == "Autoscale lets you scale session host virtual machines according to schedule."

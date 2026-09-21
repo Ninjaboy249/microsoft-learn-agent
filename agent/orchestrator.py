@@ -41,6 +41,8 @@ class MicrosoftLearnAgent:
             raise AgentError("No relevant Microsoft Learn documentation was found for this topic.")
 
         documents = self.retrieve_documents(sources)
+        if not intent["compound"]:
+            documents = self.select_documents(documents, intent["topic"])
         if not documents:
             raise AgentError("Microsoft Learn results were found, but the pages could not be read.")
         context = self.build_context(documents)
@@ -83,7 +85,7 @@ class MicrosoftLearnAgent:
         return candidates
 
     def select_sources(self, candidates: list[dict], query: str, max_sources: int) -> list[dict]:
-        query_words = re.findall(r"[a-z0-9]+", query.casefold())
+        query_words = self._search_words(query)
         query_terms = set(query_words)
         normalized_query = " ".join(query_words)
         unique: dict[str, dict] = {}
@@ -94,19 +96,54 @@ class MicrosoftLearnAgent:
             title = str(candidate.get("title", ""))
             searchable = f"{title} {candidate.get('description', '')}".casefold()
             overlap = sum(term in searchable for term in query_terms)
-            normalized_title = " ".join(re.findall(r"[a-z0-9]+", title.casefold()))
+            title_words = self._search_words(title)
+            title_terms = set(title_words)
+            normalized_title = " ".join(title_words)
             normalized_title = re.sub(r"\s+(documentation|docs)(\s+learn)?$", "", normalized_title)
             landing_bonus = 5 if normalized_title == normalized_query else 0
+            title_coverage = len(query_terms & title_terms) / max(len(query_terms), 1)
+            exact_phrase_bonus = 2 if normalized_query in " ".join(title_words) else 0
+            overview_bonus = 2 if title_coverage == 1 and re.search(r"\b(overview|documentation|introduction|what is)\b", title, re.I) else 0
+            extra_title_terms = max(len(title_terms - query_terms), 0)
+            specificity_penalty = min(extra_title_terms * 0.2, 2.0) if len(query_terms) <= 3 else 0
             ranked = dict(
                 candidate,
                 url=url,
-                rank_score=float(candidate.get("score", 0)) + overlap + landing_bonus,
+                rank_score=(
+                    float(candidate.get("score", 0))
+                    + overlap
+                    + title_coverage * 4
+                    + exact_phrase_bonus
+                    + overview_bonus
+                    + landing_bonus
+                    - specificity_penalty
+                ),
                 canonical_for_query=bool(landing_bonus),
+                query_coverage=len(query_terms & set(self._search_words(searchable))) / max(len(query_terms), 1),
             )
             if url not in unique or ranked["rank_score"] > unique[url]["rank_score"]:
                 unique[url] = ranked
         ranked_sources = sorted(unique.values(), key=lambda item: item["rank_score"], reverse=True)
-        return ranked_sources[:max_sources]
+        if not ranked_sources:
+            return []
+        minimum_ratio = 0.5 if len(query_terms) <= 3 else 0.65
+        minimum_score = ranked_sources[0]["rank_score"] * minimum_ratio
+        relevant = [
+            source for source in ranked_sources
+            if source["rank_score"] >= minimum_score and source["query_coverage"] >= 0.5
+        ]
+        return relevant[:max_sources]
+
+    @staticmethod
+    def _search_words(text: str) -> list[str]:
+        words: list[str] = []
+        for word in re.findall(r"[a-z0-9]+", text.casefold()):
+            if len(word) > 4 and word.endswith("ies"):
+                word = f"{word[:-3]}y"
+            elif len(word) > 4 and word.endswith("s") and not word.endswith("ss"):
+                word = word[:-1]
+            words.append(word)
+        return words
 
     def retrieve_documents(self, sources: list[dict]) -> list[dict]:
         documents: list[dict] = []
@@ -116,6 +153,34 @@ class MicrosoftLearnAgent:
             except (LearnReaderError, ValueError):
                 continue
         return documents
+
+    def select_documents(self, documents: list[dict], query: str) -> list[dict]:
+        """Drop pages whose extracted content only mentions a specific query incidentally."""
+        query_words = self._search_words(query)
+        query_terms = set(query_words)
+        if len(query_terms) <= 3 or len(documents) <= 1:
+            return documents
+
+        phrases = [" ".join(query_words[index:index + 2]) for index in range(len(query_words) - 1)]
+        focus_phrases = phrases[-2:]
+        scored: list[tuple[float, dict]] = []
+        for document in documents:
+            title_terms = set(self._search_words(str(document.get("title", ""))))
+            heading_text = " ".join(str(heading) for heading in document.get("headings", []))
+            heading_terms = set(self._search_words(heading_text))
+            content = str(document.get("content", "")).casefold()
+            content_terms = set(self._search_words(content))
+            title_coverage = len(query_terms & title_terms) / len(query_terms)
+            heading_coverage = len(query_terms & heading_terms) / len(query_terms)
+            content_coverage = len(query_terms & content_terms) / len(query_terms)
+            phrase_hits = sum(content.count(phrase) for phrase in focus_phrases)
+            phrase_density = min(phrase_hits * 10_000 / max(len(content), 1), 3.0)
+            score = title_coverage * 6 + heading_coverage * 4 + content_coverage + phrase_density
+            scored.append((score, document))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        minimum_score = scored[0][0] * 0.6
+        return [document for score, document in scored if score >= minimum_score]
 
     def build_context(self, documents: list[dict]) -> str:
         chunks: list[dict] = []

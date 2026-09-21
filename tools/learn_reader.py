@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup, Tag
 from services.cache import page_cache
 from tools.learn_search import USER_AGENT, is_microsoft_learn_url
 
-MAX_PAGE_CHARACTERS = 45_000
+MAX_PAGE_CHARACTERS = 200_000
 
 
 class LearnReaderError(RuntimeError):

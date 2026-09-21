@@ -27,12 +27,12 @@ GENERIC_NOTE_HEADINGS = {"concept", "how-to guide", "quickstart", "reference", "
 
 MODE_LIMITS = {
     "Quick Summary": (3, 3, 0),
-    "Study Notes": (5, 6, 6),
-    "Beginner Explanation": (4, 5, 4),
-    "Deep Dive": (7, 8, 8),
-    "Interview Preparation": (5, 7, 6),
-    "Step-by-Step Guide": (5, 8, 8),
-    "Quiz": (5, 8, 6),
+    "Study Notes": (7, 10, 12),
+    "Beginner Explanation": (5, 7, 8),
+    "Deep Dive": (10, 14, 18),
+    "Interview Preparation": (7, 10, 12),
+    "Step-by-Step Guide": (7, 12, 16),
+    "Quiz": (6, 10, 10),
 }
 
 AZURE_SETTING_NAMES = (
@@ -42,10 +42,10 @@ AZURE_SETTING_NAMES = (
 )
 
 
-def select_grounding_chunks(query: str, documents: list[dict], per_document: int = 4) -> list[dict]:
+def select_grounding_chunks(query: str, documents: list[dict], per_document: int = 8) -> list[dict]:
     """Select relevant chunks from every retrieved document for balanced grounding."""
     query_terms = set(re.findall(r"[a-z0-9][a-z0-9+#.-]*", query.casefold())) - STOP_WORDS
-    selected: list[dict] = []
+    ranked_documents: list[list[dict]] = []
     for document in documents:
         chunks = chunk_content(document)
         ranked = sorted(
@@ -59,7 +59,12 @@ def select_grounding_chunks(query: str, documents: list[dict], per_document: int
             ),
             reverse=True,
         )[:per_document]
-        selected.extend(chunk for _, chunk in sorted(ranked, key=lambda item: item[0]))
+        ranked_documents.append([chunk for _, chunk in ranked])
+    selected: list[dict] = []
+    for rank in range(per_document):
+        for chunks in ranked_documents:
+            if rank < len(chunks):
+                selected.append(chunks[rank])
     return selected
 
 
@@ -149,9 +154,9 @@ class ExtractiveKnowledgeGenerator:
 
     def generate(self, query: str, mode: str, documents: list[dict]) -> LearnResponse:
         summary_limit, concept_limit, note_limit = MODE_LIMITS.get(mode, MODE_LIMITS["Study Notes"])
-        chunks = [chunk for document in documents for chunk in chunk_content(document)]
+        chunks = select_grounding_chunks(query, documents, per_document=12)
         sentences = self._ranked_sentences(query, chunks)
-        definition = self._select_definition(query, sentences)
+        definition = self._select_definition(query, chunks)
         summary_sentences = ([definition] if definition else []) + [
             sentence for _, sentence in sentences if sentence != definition
         ][:max(summary_limit - bool(definition), 0)]
@@ -172,15 +177,23 @@ class ExtractiveKnowledgeGenerator:
             sources=sources,
         )
 
-    def _select_definition(self, query: str, sentences: list[tuple[float, str]]) -> str:
+    def _select_definition(self, query: str, chunks: list[dict]) -> str:
         query_terms = self._terms(query)
         candidates: list[tuple[float, str]] = []
-        for score, sentence in sentences:
-            overlap = len(query_terms & self._terms(sentence))
-            if overlap == 0 or not re.search(r"\b(?:is|are|refers to|provides)\b", sentence, re.I):
-                continue
-            coverage = overlap / max(len(query_terms), 1)
-            candidates.append((score + coverage * 8, sentence))
+        definition_pattern = re.compile(
+            r"\b(?:is|are)\s+(?:an?|the)\b|\b(?:refers to|lets you|allows you to|enables you to|provides)\b",
+            re.I,
+        )
+        for chunk_index, chunk in enumerate(chunks):
+            section = chunk["section"].casefold()
+            section_bonus = 4 if re.search(r"overview|introduction|what is|documentation", section) else 0
+            for sentence_index, sentence in enumerate(self._sentences(chunk["content"])):
+                overlap = len(query_terms & self._terms(sentence))
+                if overlap == 0 or not definition_pattern.search(sentence) or len(sentence) > 700:
+                    continue
+                coverage = overlap / max(len(query_terms), 1)
+                score = overlap * 3 + coverage * 4 + section_bonus - chunk_index * 0.3 - sentence_index * 0.05
+                candidates.append((score, sentence))
         return max(candidates, default=(0.0, ""), key=lambda item: item[0])[1]
 
     def _ranked_sentences(self, query: str, chunks: list[dict]) -> list[tuple[float, str]]:
@@ -206,8 +219,9 @@ class ExtractiveKnowledgeGenerator:
         ranked_chunks = sorted(
             chunks,
             key=lambda chunk: (
-                len(query_terms & self._terms(f"{chunk['section']} {chunk['content']}")),
-                -len(chunk["content"]),
+                len(query_terms & self._terms(chunk["section"])) * 3
+                + len(query_terms & self._terms(chunk["content"])),
+                min(len(re.sub(r"```.*?```", "", chunk["content"], flags=re.DOTALL)), 3_000),
             ),
             reverse=True,
         )
@@ -217,11 +231,11 @@ class ExtractiveKnowledgeGenerator:
             section = chunk["section"].strip()
             if section.casefold() in seen_sections or section.casefold() in GENERIC_NOTE_HEADINGS:
                 continue
-            content = clean_content(chunk["content"])
+            content = clean_content(re.sub(r"```.*?```", "", chunk["content"], flags=re.DOTALL))
             if not content:
                 continue
             seen_sections.add(section.casefold())
-            notes.append(Note(heading=section, content=content[:1800]))
+            notes.append(Note(heading=section, content=content[:3500]))
             if len(notes) == limit:
                 break
         return notes
