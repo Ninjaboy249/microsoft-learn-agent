@@ -73,6 +73,31 @@ st.markdown(
         margin: 0 0 1.25rem;
         max-width: 28ch;
     }
+    .premium-header {
+        --header-accent: #006b5f;
+        align-items: stretch;
+        background: #f6faf8;
+        border-bottom: 1px solid var(--line);
+        border-top: 4px solid var(--header-accent);
+        display: grid;
+        margin: -1.5rem -1.5rem 1.25rem;
+        min-height: 230px;
+        overflow: hidden;
+    }
+    .premium-header.with-visual { grid-template-columns: minmax(0, 1fr) minmax(190px, 34%); }
+    .premium-header.family-azure { --header-accent: #0078d4; background: #f4f9fd; }
+    .premium-header.family-developer { --header-accent: #512bd4; background: #f8f7fd; }
+    .premium-header.family-productivity { --header-accent: #d83b01; background: #fff8f5; }
+    .premium-header.family-security { --header-accent: #107c10; background: #f5faf5; }
+    .premium-header.family-windows { --header-accent: #0067b8; background: #f4f9fc; }
+    .premium-copy { align-self: center; padding: clamp(1.5rem, 3vw, 2.4rem); }
+    .premium-kicker { align-items: center; color: var(--header-accent); display: flex; font-size: .76rem; font-weight: 800; gap: .45rem; letter-spacing: .08em; margin-bottom: .85rem; text-transform: uppercase; }
+    .premium-kicker [data-testid="stIconMaterial"] { font-size: 1.15rem; letter-spacing: 0; }
+    .premium-meta { color: var(--muted); font-size: .9rem; font-weight: 600; margin-top: .9rem; }
+    .premium-visual { align-items: center; background: #ffffff; border-left: 1px solid var(--line); display: flex; justify-content: center; min-height: 226px; overflow: hidden; }
+    .premium-visual img { height: 100%; max-height: 300px; object-fit: contain; padding: 1rem; width: 100%; }
+    .premium-visual.fallback { background: var(--header-accent); color: #ffffff; }
+    .premium-visual.fallback [data-testid="stIconMaterial"] { font-size: 4.5rem; font-variation-settings: 'FILL' 0, 'wght' 300; }
     .doc-summary { color: var(--ink); font-size: 1.08rem; line-height: 1.8; margin: 1.25rem 0; max-width: 72ch; }
     .doc-summary p { margin: 0 0 1rem; }
     .doc-summary p:last-child { margin-bottom: 0; }
@@ -266,6 +291,22 @@ def readable_markdown(value: str, sentences_per_paragraph: int = 2) -> str:
     return "\n\n".join(blocks)
 
 
+def result_family(response: LearnResponse) -> tuple[str, str, str]:
+    source_url = str(response.sources[0].url) if response.sources else ""
+    text = f"{response.topic} {source_url}".casefold()
+    families = (
+        (("power bi", "power platform", "microsoft 365", "teams", "sharepoint"), "Microsoft 365", "workspaces", "productivity"),
+        (("security", "entra", "defender", "sentinel", "identity"), "Microsoft Security", "shield", "security"),
+        ((".net", "dotnet", "c#", "asp.net", "visual studio", "github"), "Developer platform", "code_blocks", "developer"),
+        (("windows", "winui"), "Windows", "desktop_windows", "windows"),
+        (("azure",), "Microsoft Azure", "cloud", "azure"),
+    )
+    for terms, label, icon, family in families:
+        if any(term in text for term in terms):
+            return label, icon, family
+    return "Microsoft Learn", "auto_stories", "learn"
+
+
 def render_response(response: LearnResponse) -> None:
     st.markdown(
         """
@@ -282,6 +323,14 @@ def render_response(response: LearnResponse) -> None:
         [data-testid="stSelectbox"] div[role="group"] { background: #ffffff !important; border-color: #9fb8af !important; }
         [data-testid="stTextInputField"], [data-testid="stNumberInputField"], [data-testid="stSelectbox"] input { color: var(--ink) !important; }
         [data-testid="stSidebar"] { background: #ffffff !important; border-color: var(--line) !important; }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) {
+            background: #ffffff;
+            border: 1px solid #d9e3df;
+            border-radius: 8px;
+            box-shadow: 0 18px 45px rgba(21, 37, 31, .08);
+            overflow: hidden;
+            padding: 1.5rem;
+        }
         [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] { max-width: 72ch; }
         [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] p,
         [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] li {
@@ -316,6 +365,9 @@ def render_response(response: LearnResponse) -> None:
                 width: 100% !important;
             }
             .doc-title { font-size: 2rem !important; margin-top: .5rem; }
+            .premium-header { margin: -1.5rem -1.5rem 1.25rem; min-height: 0; }
+            .premium-header.with-visual { grid-template-columns: 1fr; }
+            .premium-visual { border-left: 0; border-top: 1px solid var(--line); max-height: 230px; min-height: 180px; }
         }
         </style>
         """,
@@ -330,6 +382,16 @@ def render_response(response: LearnResponse) -> None:
     definition = response.definition or first_sentence(response.summary)
     overview = response.summary[len(definition):].strip() if response.summary.startswith(definition) else response.summary
     text = response_text(response)
+    family_label, family_icon, family_class = result_family(response)
+    image_source = next((source for source in response.sources if source.image_url), None)
+    visual = (
+        f'<div class="premium-visual"><img src="{escape(str(image_source.image_url), quote=True)}" '
+        f'alt="{escape(image_source.title, quote=True)}"></div>'
+        if image_source
+        else f'<div class="premium-visual fallback"><span data-testid="stIconMaterial">{family_icon}</span></div>'
+    )
+    header_class = f"premium-header family-{family_class} with-visual"
+    source_label = f"{len(response.sources)} official source{'s' if len(response.sources) != 1 else ''}"
 
     st.markdown(
         f'<div class="doc-breadcrumb"><span>Learn</span> &nbsp;›&nbsp; Microsoft Azure &nbsp;›&nbsp; {escape(response.topic)}</div>',
@@ -348,7 +410,14 @@ def render_response(response: LearnResponse) -> None:
         )
 
     with article:
-        st.markdown(f'<h1 class="doc-title">{escape(article_title)}</h1>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="{header_class}"><div class="premium-copy">'
+            f'<div class="premium-kicker"><span data-testid="stIconMaterial">verified</span>{family_label} learning brief</div>'
+            f'<h1 class="doc-title">{escape(article_title)}</h1>'
+            f'<div class="premium-meta">{source_label} · '
+            f'{len(article_notes) + 3} focused sections</div></div>{visual}</div>',
+            unsafe_allow_html=True,
+        )
         action_source, action_copy, action_download = st.columns([1.5, 1, 1.2])
         with action_source:
             if response.sources:

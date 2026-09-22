@@ -10,6 +10,7 @@ A keyless Streamlit application that searches and extracts documentation from `h
 - Extracts headings, paragraphs, lists, and code blocks with Beautiful Soup
 - Ranks extracted sentences against the user's topic
 - Produces summaries, key concepts, section notes, examples, and references
+- Presents answers in a product-aware reading layout with trusted Microsoft Learn diagrams when available
 - Requires no API key or cloud AI permission
 - Supports simple and compound searches
 - Caches searches and pages in process memory

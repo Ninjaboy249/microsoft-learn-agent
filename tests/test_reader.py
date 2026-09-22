@@ -15,6 +15,8 @@ def test_reader_extracts_documentation_and_removes_ui():
       <header>Global navigation</header><main>
         <h1>Azure Functions overview</h1><p>Run event-driven code.</p>
         <h2>Hosting</h2><ul><li>Consumption plan</li><li>Premium plan</li></ul>
+        <img src="/en-us/azure/media/functions-overview.svg" alt="Azure Functions architecture">
+        <img src="https://example.org/untrusted.png" alt="External image">
         <pre>func start\nfunc azure functionapp publish example-app</pre><nav>Related UI</nav>
       </main><footer>Footer</footer>
     </body></html>
@@ -28,6 +30,7 @@ def test_reader_extracts_documentation_and_removes_ui():
 
     assert page["title"] == "Azure Functions overview"
     assert page["headings"] == ["Azure Functions overview", "Hosting"]
+    assert page["image_url"] == "https://learn.microsoft.com/en-us/azure/media/functions-overview.svg"
     assert "Consumption plan" in page["content"]
     assert "```\nfunc start\nfunc azure functionapp publish example-app\n```" in page["content"]
     assert "Global navigation" not in page["content"]

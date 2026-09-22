@@ -74,7 +74,10 @@ class ExtractiveKnowledgeGenerator:
         notes = self._build_notes(query, chunks, note_limit)
         examples = self._extract_examples(chunks, limit=4)
         concepts = self._extract_concepts(query, documents, chunks, concept_limit)
-        sources = [Source(title=document["title"], url=document["url"]) for document in documents]
+        sources = [
+            Source(title=document["title"], url=document["url"], image_url=document.get("image_url"))
+            for document in documents
+        ]
 
         return LearnResponse(
             topic=query,

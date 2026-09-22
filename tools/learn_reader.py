@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import textwrap
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -66,6 +67,7 @@ class MicrosoftLearnReaderTool:
 
         title_node = soup.find("h1") or soup.find("title")
         title = title_node.get_text(" ", strip=True) if title_node else "Microsoft Learn"
+        image_url = MicrosoftLearnReaderTool._article_image(main, url)
         headings: list[str] = []
         lines: list[str] = []
         seen: set[str] = set()
@@ -90,7 +92,21 @@ class MicrosoftLearnReaderTool:
                 lines.append(text)
 
         content = "\n".join(lines).strip()[:MAX_PAGE_CHARACTERS]
-        return {"title": title, "url": url, "content": content, "headings": headings}
+        return {"title": title, "url": url, "content": content, "headings": headings, "image_url": image_url}
+
+    @staticmethod
+    def _article_image(main: Tag, page_url: str) -> str | None:
+        for image in main.select("img[src]"):
+            source = urljoin(page_url, str(image.get("src", "")))
+            alt = str(image.get("alt", "")).strip()
+            if (
+                alt
+                and is_microsoft_learn_url(source)
+                and re.search(r"\.(?:png|jpe?g|webp|svg)(?:\?|$)", source, re.I)
+                and not re.search(r"(?:icon|logo|badge|avatar|open-graph)", source, re.I)
+            ):
+                return source
+        return None
 
 
 def get_microsoft_learn_page(url: str) -> dict:

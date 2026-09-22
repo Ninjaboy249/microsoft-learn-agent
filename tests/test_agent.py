@@ -25,7 +25,13 @@ class FakeReader:
 
     def get_page(self, url):
         self.urls.append(url)
-        return {"title": "Azure Functions overview", "url": url, "headings": ["Overview"], "content": "## Overview\nAzure Functions runs event-driven code."}
+        return {
+            "title": "Azure Functions overview",
+            "url": url,
+            "headings": ["Overview"],
+            "content": "## Overview\nAzure Functions runs event-driven code.",
+            "image_url": "https://learn.microsoft.com/en-us/azure/media/functions-overview.png",
+        }
 
 
 def test_agent_runs_complete_grounded_flow_and_validates_sources():
@@ -38,6 +44,7 @@ def test_agent_runs_complete_grounded_flow_and_validates_sources():
     assert reader.urls == [LEARN_URL]
     assert [str(source.url) for source in response.sources] == [LEARN_URL]
     assert response.sources[0].title == "Azure Functions overview"
+    assert str(response.sources[0].image_url) == "https://learn.microsoft.com/en-us/azure/media/functions-overview.png"
     assert response.definition == "Azure Functions runs event-driven code."
     assert response.summary == "Azure Functions runs event-driven code."
     assert response.notes[0].content == "Azure Functions runs event-driven code."

@@ -199,6 +199,13 @@ class MicrosoftLearnAgent:
         for source in response.sources:
             url = str(source.url).split("#", 1)[0]
             if url in retrieved and url not in seen and is_microsoft_learn_url(url):
-                validated.append(Source(title=retrieved[url]["title"], url=url))
+                image_url = str(retrieved[url].get("image_url") or "")
+                validated.append(
+                    Source(
+                        title=retrieved[url]["title"],
+                        url=url,
+                        image_url=image_url if is_microsoft_learn_url(image_url) else None,
+                    )
+                )
                 seen.add(url)
         return response.model_copy(update={"sources": validated})

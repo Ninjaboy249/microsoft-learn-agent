@@ -10,6 +10,7 @@ class Source(BaseModel):
 
     title: str = Field(min_length=1)
     url: HttpUrl
+    image_url: HttpUrl | None = None
 
 
 class Note(BaseModel):
