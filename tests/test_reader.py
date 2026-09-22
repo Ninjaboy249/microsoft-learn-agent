@@ -15,7 +15,7 @@ def test_reader_extracts_documentation_and_removes_ui():
       <header>Global navigation</header><main>
         <h1>Azure Functions overview</h1><p>Run event-driven code.</p>
         <h2>Hosting</h2><ul><li>Consumption plan</li><li>Premium plan</li></ul>
-        <pre>func start</pre><nav>Related UI</nav>
+        <pre>func start\nfunc azure functionapp publish example-app</pre><nav>Related UI</nav>
       </main><footer>Footer</footer>
     </body></html>
     """
@@ -29,7 +29,7 @@ def test_reader_extracts_documentation_and_removes_ui():
     assert page["title"] == "Azure Functions overview"
     assert page["headings"] == ["Azure Functions overview", "Hosting"]
     assert "Consumption plan" in page["content"]
-    assert "func start" in page["content"]
+    assert "```\nfunc start\nfunc azure functionapp publish example-app\n```" in page["content"]
     assert "Global navigation" not in page["content"]
     assert "bad()" not in page["content"]
 

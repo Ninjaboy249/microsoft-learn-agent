@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import textwrap
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -71,7 +72,10 @@ class MicrosoftLearnReaderTool:
         for element in main.find_all(["h1", "h2", "h3", "h4", "p", "li", "pre"]):
             if isinstance(element, Tag) and element.name == "li" and element.find_parent("li"):
                 continue
-            text = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
+            if element.name == "pre":
+                text = textwrap.dedent(element.get_text("", strip=False)).strip("\r\n")
+            else:
+                text = re.sub(r"\s+", " ", element.get_text(" ", strip=True)).strip()
             if not text or text in seen:
                 continue
             seen.add(text)

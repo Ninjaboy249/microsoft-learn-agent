@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
-import os
 import re
 from collections import Counter
-from typing import Any
 
 from agent.models import LearnResponse, Note, Source
-from tools.content_processor import chunk_content, clean_content, prepare_context
+from tools.content_processor import chunk_content, clean_content
 
 STOP_WORDS = {
     "about", "after", "also", "and", "are", "been", "before", "can", "for",
@@ -35,13 +32,6 @@ MODE_LIMITS = {
     "Quiz": (6, 10, 10),
 }
 
-AZURE_SETTING_NAMES = (
-    "AZURE_OPENAI_API_KEY",
-    "AZURE_OPENAI_ENDPOINT",
-    "AZURE_OPENAI_DEPLOYMENT",
-)
-
-
 def select_grounding_chunks(query: str, documents: list[dict], per_document: int = 8) -> list[dict]:
     """Select relevant chunks from every retrieved document for balanced grounding."""
     query_terms = set(re.findall(r"[a-z0-9][a-z0-9+#.-]*", query.casefold())) - STOP_WORDS
@@ -66,87 +56,6 @@ def select_grounding_chunks(query: str, documents: list[dict], per_document: int
             if rank < len(chunks):
                 selected.append(chunks[rank])
     return selected
-
-
-class AzureOpenAIKnowledgeGenerator:
-    """Generate a grounded response from retrieved content using Azure OpenAI."""
-
-    def __init__(
-        self,
-        api_key: str,
-        endpoint: str,
-        deployment: str,
-        api_version: str = "2024-10-21",
-        client: Any | None = None,
-        fallback: Any | None = None,
-    ) -> None:
-        if client is None:
-            from openai import AzureOpenAI
-
-            client = AzureOpenAI(
-                api_key=api_key,
-                azure_endpoint=endpoint,
-                api_version=api_version,
-            )
-        self.client = client
-        self.deployment = deployment
-        self.fallback = fallback or ExtractiveKnowledgeGenerator()
-
-    def generate(self, query: str, mode: str, documents: list[dict]) -> LearnResponse:
-        chunks = select_grounding_chunks(query, documents)
-        context = prepare_context(chunks)
-        sources = [Source(title=document["title"], url=document["url"]) for document in documents]
-        try:
-            completion = self.client.chat.completions.create(
-                model=self.deployment,
-                temperature=0.2,
-                response_format={"type": "json_object"},
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You create accurate learning material using only the supplied Microsoft Learn "
-                            "content. Do not add unsupported facts. Return JSON with string fields topic and "
-                            "definition and summary, string arrays key_concepts and examples, and a notes array "
-                            "containing objects with heading and content. Definition must directly state what the "
-                            "topic is. Synthesize the relevant facts across all supplied sources, merge duplicate "
-                            "information, and preserve important capabilities, limitations, warnings, prerequisites, "
-                            "and procedures. Organize notes with clear descriptive headings appropriate to the "
-                            "requested mode. Do not include sources in the JSON."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Topic: {query}\nMode: {mode}\n\nMicrosoft Learn content:\n{context}",
-                    },
-                ],
-            )
-            content = completion.choices[0].message.content
-            payload = json.loads(content or "{}")
-            payload["topic"] = query
-            payload["definition"] = str(payload.get("definition") or self._first_sentence(payload.get("summary", "")))
-            payload["sources"] = [source.model_dump(mode="json") for source in sources]
-            return LearnResponse.model_validate(payload)
-        except Exception:
-            return self.fallback.generate(query, mode, documents)
-
-    @staticmethod
-    def _first_sentence(text: str) -> str:
-        match = re.search(r"^.*?[.!?](?:\s|$)", str(text).strip())
-        return match.group(0).strip() if match else str(text).strip()
-
-
-def create_knowledge_generator(settings: dict[str, str] | None = None) -> Any:
-    """Use Azure OpenAI only when every required setting is available."""
-    configured = {name: str(value).strip() for name, value in (settings or os.environ).items()}
-    if not all(configured.get(name) for name in AZURE_SETTING_NAMES):
-        return ExtractiveKnowledgeGenerator()
-    return AzureOpenAIKnowledgeGenerator(
-        api_key=configured["AZURE_OPENAI_API_KEY"],
-        endpoint=configured["AZURE_OPENAI_ENDPOINT"],
-        deployment=configured["AZURE_OPENAI_DEPLOYMENT"],
-        api_version=configured.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
-    )
 
 
 class ExtractiveKnowledgeGenerator:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from html import escape
-import os
 import re
 
 import streamlit as st
@@ -11,7 +10,7 @@ from pydantic import ValidationError
 
 from agent.models import LearnResponse
 from agent.orchestrator import AgentError, MicrosoftLearnAgent
-from services.knowledge_generator import AZURE_SETTING_NAMES, create_knowledge_generator
+from services.knowledge_generator import ExtractiveKnowledgeGenerator
 
 MODES = [
     "Quick Summary",
@@ -39,12 +38,10 @@ st.markdown(
         --line: #cfdcd7;
     }
     .stApp {
-        background-color: #f5f8f7;
-        background-image: linear-gradient(rgba(0, 107, 95, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 107, 95, .035) 1px, transparent 1px);
-        background-size: 32px 32px;
+        background: #ffffff;
         color: var(--ink);
     }
-    [data-testid="stHeader"] { background: rgba(245, 248, 247, .88); backdrop-filter: blur(12px); }
+    [data-testid="stHeader"] { background: rgba(255, 255, 255, .94); backdrop-filter: blur(12px); }
     [data-testid="stMainBlockContainer"] { max-width: 1240px; padding-top: 2rem; padding-bottom: 4rem; }
     html, body, .stApp { font-family: 'DM Sans', sans-serif; }
     [data-testid="stIconMaterial"] { font-family: 'Material Symbols Rounded' !important; }
@@ -57,23 +54,23 @@ st.markdown(
     .result-heading strong { font: 700 1.25rem 'Manrope', sans-serif; }
     .result-heading span { color: var(--muted); font-size: .82rem; }
     .result-label { color: var(--brand); font: 800 .74rem 'DM Sans'; letter-spacing: .1em; margin: 1.6rem 0 .55rem; text-transform: uppercase; }
-    .summary-band { background: #e9f4f0; border-left: 4px solid var(--brand); border-radius: 0 6px 6px 0; color: #18372f; font-size: 1.05rem; line-height: 1.75; padding: 1rem 1.15rem; }
+    .summary-band { background: #ffffff; border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 0 6px 6px 0; color: #18372f; font-size: 1.05rem; line-height: 1.75; padding: 1rem 1.15rem; }
     .source-link { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 0 6px 6px 0; color: var(--ink) !important; display: block; margin: .65rem 0; padding: .85rem 1rem; text-decoration: none !important; }
     .source-link:hover { border-color: var(--brand); box-shadow: 0 5px 18px rgba(16, 62, 51, .08); }
     .source-link small { color: var(--muted); display: block; margin-top: .25rem; overflow-wrap: anywhere; }
-    .doc-breadcrumb { color: #b8c2be; font-size: .92rem; margin: .4rem 0 1.8rem; }
-    .doc-breadcrumb span { color: #75b6e7; }
-    .doc-nav-title { color: #f5f7f6; font: 700 1rem 'Manrope', sans-serif; margin-bottom: .8rem; }
-    .doc-nav-label { color: #9eaaa5; font-size: .72rem; font-weight: 800; letter-spacing: .1em; margin: 1rem 0 .45rem; text-transform: uppercase; }
-    .doc-nav-link { border-left: 2px solid transparent; color: #cbd3d0 !important; display: block; font-size: .9rem; padding: .42rem .7rem; text-decoration: none !important; }
-    .doc-nav-link:hover { background: #2b2b2b; border-left-color: #75b6e7; color: #ffffff !important; }
-    .doc-title { color: #ffffff; font: 750 clamp(2rem, 4vw, 3.25rem)/1.08 'Manrope', sans-serif; margin: 0 0 1rem; }
-    .doc-summary { color: #f2f4f3; font-size: 1.08rem; line-height: 1.75; margin: 1.25rem 0; }
-    .definition-callout { background: #074d79; border: 1px solid #5ca6d6; border-radius: 6px; color: #ffffff; margin: 1.4rem 0; padding: 1rem 1.15rem; }
+    .doc-breadcrumb { color: var(--muted); font-size: .92rem; margin: .4rem 0 1.8rem; }
+    .doc-breadcrumb span { color: var(--brand); }
+    .doc-nav-title { color: var(--ink); font: 700 1rem 'Manrope', sans-serif; margin-bottom: .8rem; }
+    .doc-nav-label { color: var(--muted); font-size: .72rem; font-weight: 800; letter-spacing: .1em; margin: 1rem 0 .45rem; text-transform: uppercase; }
+    .doc-nav-link { border-left: 2px solid transparent; color: var(--muted) !important; display: block; font-size: .9rem; padding: .42rem .7rem; text-decoration: none !important; }
+    .doc-nav-link:hover { background: #ffffff; border-left-color: var(--brand); color: var(--brand) !important; }
+    .doc-title { color: var(--ink); font: 750 clamp(2rem, 4vw, 3.25rem)/1.08 'Manrope', sans-serif; margin: 0 0 1rem; }
+    .doc-summary { color: var(--ink); font-size: 1.08rem; line-height: 1.75; margin: 1.25rem 0; }
+    .definition-callout { background: #ffffff; border: 1px solid #5ca6d6; border-left: 4px solid #0078d4; border-radius: 0 6px 6px 0; color: var(--ink); margin: 1.4rem 0; padding: 1rem 1.15rem; }
     .definition-callout strong { display: block; font: 700 1.15rem 'Manrope', sans-serif; margin-bottom: .55rem; }
-    .definition-callout p { color: #ffffff !important; font-size: 1.05rem; line-height: 1.7; margin: 0; }
-    .doc-rule { border-top: 1px solid #3b3b3b; margin: 1.4rem 0; }
-    .doc-source { color: #75b6e7 !important; overflow-wrap: anywhere; text-decoration: none !important; }
+    .definition-callout p { color: var(--ink) !important; font-size: 1.05rem; line-height: 1.7; margin: 0; }
+    .doc-rule { border-top: 1px solid var(--line); margin: 1.4rem 0; }
+    .doc-source { color: #0067b8 !important; overflow-wrap: anywhere; text-decoration: none !important; }
     [data-testid="stTextInputRootElement"], [data-testid="stNumberInputContainer"], [data-testid="stSelectbox"] div[role="group"] {
         background: var(--surface) !important;
         border-color: #9fb8af !important;
@@ -85,7 +82,8 @@ st.markdown(
     }
     [data-testid="stTextInputField"]::placeholder { color: #71827b !important; opacity: 1; }
     [data-testid="stWidgetLabel"] p { color: #344a42 !important; font-weight: 700; }
-    div[data-testid="stButton"] button, div[data-testid="stDownloadButton"] button {
+    div[data-testid="stButton"] button, div[data-testid="stDownloadButton"] button,
+    div[data-testid="stLinkButton"] a {
         border-radius: 5px !important;
         font-weight: 700 !important;
         min-height: 2.75rem;
@@ -96,14 +94,17 @@ st.markdown(
         color: #ffffff !important;
     }
     div[data-testid="stButton"] button[kind="primary"]:hover { background: var(--brand-deep) !important; }
-    div[data-testid="stButton"] button[kind="secondary"], div[data-testid="stDownloadButton"] button {
+    div[data-testid="stButton"] button[kind="secondary"], div[data-testid="stDownloadButton"] button,
+    div[data-testid="stLinkButton"] a {
         background: var(--surface) !important;
         border-color: #9fb8af !important;
         color: #163a32 !important;
     }
     div[data-testid="stButton"] button[kind="secondary"] p, div[data-testid="stButton"] button[kind="secondary"] span,
-    div[data-testid="stDownloadButton"] button p, div[data-testid="stDownloadButton"] button span { color: inherit !important; }
-    div[data-testid="stButton"] button[kind="secondary"]:hover, div[data-testid="stDownloadButton"] button:hover {
+    div[data-testid="stDownloadButton"] button p, div[data-testid="stDownloadButton"] button span,
+    div[data-testid="stLinkButton"] a p, div[data-testid="stLinkButton"] a span { color: inherit !important; }
+    div[data-testid="stButton"] button[kind="secondary"]:hover, div[data-testid="stDownloadButton"] button:hover,
+    div[data-testid="stLinkButton"] a:hover {
         background: #e7f2ee !important;
         border-color: var(--brand) !important;
     }
@@ -117,8 +118,18 @@ st.markdown(
     div[data-testid="stTabs"] [data-baseweb="tab-list"] { border-bottom: 1px solid var(--line); gap: 1.2rem; }
     div[data-testid="stTabs"] button[role="tab"] { color: var(--muted); font-weight: 700; padding-left: .2rem; padding-right: .2rem; }
     div[data-testid="stTabs"] button[aria-selected="true"] { color: var(--brand); }
-    div[data-testid="stCode"] { border: 1px solid var(--line); border-radius: 6px; }
-    [data-testid="stSidebar"] { background: #edf3f0; border-left: 1px solid var(--line); }
+    div[data-testid="stCode"] { background: #f7f9f8; border: 1px solid var(--line); border-radius: 6px; }
+    div[data-testid="stCode"] > div:last-child,
+    div[data-testid="stCode"] [data-testid="stElementToolbarButton"] {
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+    div[data-testid="stCode"] [aria-label="Copy to clipboard"] {
+        background: #ffffff !important;
+        border: 1px solid #9fb8af !important;
+        color: var(--ink) !important;
+    }
+    [data-testid="stSidebar"] { background: #ffffff; border-left: 1px solid var(--line); }
     @media (max-width: 760px) {
         [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
         .hero { padding-top: .5rem; }
@@ -142,24 +153,9 @@ def initialize_state() -> None:
             st.session_state[key] = value
 
 
-def get_azure_settings() -> dict[str, str]:
-    settings = {
-        name: os.environ.get(name, "")
-        for name in (*AZURE_SETTING_NAMES, "AZURE_OPENAI_API_VERSION")
-    }
-    try:
-        for name in settings:
-            if name in st.secrets:
-                settings[name] = str(st.secrets[name])
-    except (FileNotFoundError, KeyError):
-        pass
-    return settings
-
-
 @st.cache_resource
 def get_agent() -> MicrosoftLearnAgent:
-    generator = create_knowledge_generator(get_azure_settings())
-    return MicrosoftLearnAgent(knowledge_generator=generator)
+    return MicrosoftLearnAgent(knowledge_generator=ExtractiveKnowledgeGenerator())
 
 
 def clear_workspace() -> None:
@@ -213,27 +209,39 @@ def first_sentence(value: str) -> str:
     return match.group(0).strip() if match else value.strip()
 
 
+def code_language(value: str) -> str | None:
+    if re.search(r"(^|\n)\s*(?:az|curl|sudo|brew|npm|pip|func|docker|kubectl)\b", value):
+        return "bash"
+    if re.search(r"(^|\n)\s*(?:Get-|Set-|New-|Remove-|Install-|\$[A-Za-z_])", value):
+        return "powershell"
+    if value.lstrip().startswith(("{", "[")):
+        return "json"
+    return None
+
+
 def render_response(response: LearnResponse) -> None:
     st.markdown(
         """
         <style>
-        .stApp { background: #1f1f1f !important; background-image: none !important; color: #f2f4f3 !important; }
-        [data-testid="stHeader"] { background: rgba(31, 31, 31, .94) !important; }
+        .stApp { background: #ffffff !important; background-image: none !important; color: var(--ink) !important; }
+        [data-testid="stHeader"] { background: rgba(255, 255, 255, .94) !important; }
         [data-testid="stMainBlockContainer"] { max-width: 1480px; padding-top: 4.75rem; }
         .hero { display: none; }
-        .hero-mark { color: #75b6e7; }
+        .hero-mark { color: var(--brand); }
         .hero h1, .hero p, h1, h2, h3, [data-testid="stMarkdownContainer"] p,
-        [data-testid="stMarkdownContainer"] li { color: #f2f4f3; }
-        [data-testid="stWidgetLabel"] p { color: #d5dcda !important; }
+        [data-testid="stMarkdownContainer"] li { color: var(--ink); }
+        [data-testid="stWidgetLabel"] p { color: #344a42 !important; }
         [data-testid="stTextInputRootElement"], [data-testid="stNumberInputContainer"],
-        [data-testid="stSelectbox"] div[role="group"] { background: #292929 !important; border-color: #626262 !important; }
-        [data-testid="stTextInputField"], [data-testid="stNumberInputField"], [data-testid="stSelectbox"] input { color: #ffffff !important; }
-        [data-testid="stSidebar"] { background: #252525 !important; border-color: #3b3b3b !important; }
-        div[data-testid="stButton"] button[kind="secondary"], div[data-testid="stDownloadButton"] button {
-            background: #292929 !important; border-color: #777777 !important; color: #ffffff !important;
+        [data-testid="stSelectbox"] div[role="group"] { background: #ffffff !important; border-color: #9fb8af !important; }
+        [data-testid="stTextInputField"], [data-testid="stNumberInputField"], [data-testid="stSelectbox"] input { color: var(--ink) !important; }
+        [data-testid="stSidebar"] { background: #ffffff !important; border-color: var(--line) !important; }
+        div[data-testid="stButton"] button[kind="secondary"], div[data-testid="stDownloadButton"] button,
+        div[data-testid="stLinkButton"] a {
+            background: #ffffff !important; border-color: #9fb8af !important; color: #163a32 !important;
         }
-        div[data-testid="stButton"] button[kind="secondary"]:hover, div[data-testid="stDownloadButton"] button:hover {
-            background: #353535 !important; border-color: #75b6e7 !important;
+        div[data-testid="stButton"] button[kind="secondary"]:hover, div[data-testid="stDownloadButton"] button:hover,
+        div[data-testid="stLinkButton"] a:hover {
+            background: #ffffff !important; border-color: var(--brand) !important;
         }
         [data-testid="stColumn"]:has(.doc-nav-title) { align-self: flex-start; position: sticky; top: 4rem; }
         @media (max-width: 900px) {
@@ -323,7 +331,7 @@ def render_response(response: LearnResponse) -> None:
             st.markdown('<div id="examples"></div>', unsafe_allow_html=True)
             st.header("Examples")
             for example in response.examples:
-                st.code(example, language=None)
+                st.code(example, language=code_language(example), wrap_lines=False)
 
         st.markdown('<div id="references"></div>', unsafe_allow_html=True)
         st.header("References")
@@ -416,7 +424,4 @@ else:
         st.caption("Knowledge source")
         st.markdown("**learn.microsoft.com only**")
         st.caption("Answer generation")
-        if get_agent().knowledge_generator.__class__.__name__ == "AzureOpenAIKnowledgeGenerator":
-            st.markdown("**Azure OpenAI**")
-        else:
-            st.markdown("**Built-in extractive mode**")
+        st.markdown("**Built-in extractive mode**")

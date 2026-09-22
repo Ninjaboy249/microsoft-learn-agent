@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from agent.models import LearnResponse, Source
-from services.knowledge_generator import create_knowledge_generator
+from services.knowledge_generator import ExtractiveKnowledgeGenerator
 from tools.content_processor import chunk_content, prepare_context
 from tools.learn_reader import LearnReaderError, MicrosoftLearnReaderTool
 from tools.learn_search import MicrosoftLearnSearchTool, is_microsoft_learn_url
@@ -25,7 +25,7 @@ class MicrosoftLearnAgent:
     ) -> None:
         self.search_tool = search_tool or MicrosoftLearnSearchTool()
         self.reader_tool = reader_tool or MicrosoftLearnReaderTool()
-        self.knowledge_generator = knowledge_generator or create_knowledge_generator()
+        self.knowledge_generator = knowledge_generator or ExtractiveKnowledgeGenerator()
 
     def run(self, user_query: str, mode: str, max_sources: int = 5) -> LearnResponse:
         query = user_query.strip()

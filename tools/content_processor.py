@@ -17,11 +17,25 @@ def clean_content(content: str) -> str:
     if not content:
         return ""
     content = content.replace("\xa0", " ").replace("\r\n", "\n")
-    content = re.sub(r"[ \t]+", " ", content)
+    parts = re.split(r"(```.*?```)", content, flags=re.DOTALL)
+    content = "".join(
+        part if part.startswith("```") else re.sub(r"[ \t]+", " ", part)
+        for part in parts
+    )
     content = re.sub(r"\n{3,}", "\n\n", content)
     lines: list[str] = []
     previous = ""
-    for line in (part.strip() for part in content.splitlines()):
+    in_code = False
+    for part in content.splitlines():
+        if part.strip() == "```":
+            lines.append("```")
+            in_code = not in_code
+            previous = ""
+            continue
+        if in_code:
+            lines.append(part.rstrip())
+            continue
+        line = part.strip()
         if any(pattern.search(line) for pattern in IGNORED_LINE_PATTERNS):
             if lines and lines[-1].casefold() == "note":
                 lines.pop()

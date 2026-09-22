@@ -16,6 +16,12 @@ def test_clean_content_removes_authorization_boilerplate():
     assert clean_content(content) == "Useful documentation.\nMore useful documentation."
 
 
+def test_clean_content_preserves_code_lines_and_indentation():
+    content = "Before.\n```\nfunc start\n  --verbose\n```\nAfter."
+
+    assert clean_content(content) == content
+
+
 def test_chunking_preserves_source_and_sections():
     document = {
         "title": "Functions",
