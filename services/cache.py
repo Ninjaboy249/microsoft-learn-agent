@@ -37,6 +37,10 @@ class TTLCache(Generic[T]):
             while len(self._items) > self.max_size:
                 self._items.popitem(last=False)
 
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
 
 search_cache: TTLCache[list[dict]] = TTLCache(max_size=100, ttl_seconds=900)
 page_cache: TTLCache[dict] = TTLCache(max_size=100, ttl_seconds=3600)

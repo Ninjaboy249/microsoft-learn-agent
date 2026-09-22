@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from html import escape
 import re
 
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 
 from agent.models import LearnResponse
 from agent.orchestrator import AgentError, MicrosoftLearnAgent
+from services.cache import page_cache, search_cache
 from services.knowledge_generator import ExtractiveKnowledgeGenerator
 
 MODES = [
@@ -213,7 +215,15 @@ st.markdown(
 
 
 def initialize_state() -> None:
-    defaults = {"topic": "", "mode": "Study Notes", "source_count": 5, "response": None, "history": []}
+    defaults = {
+        "topic": "",
+        "mode": "Study Notes",
+        "source_count": 5,
+        "response": None,
+        "history": [],
+        "generation_error": "",
+        "generated_at": "",
+    }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
@@ -227,6 +237,8 @@ def get_agent() -> MicrosoftLearnAgent:
 def clear_workspace() -> None:
     st.session_state.topic = ""
     st.session_state.response = None
+    st.session_state.generation_error = ""
+    st.session_state.generated_at = ""
 
 
 def load_history_topic() -> None:
@@ -236,21 +248,28 @@ def load_history_topic() -> None:
         st.session_state.response = None
 
 
-def run_generation() -> None:
+def run_generation(refresh: bool = False) -> bool:
     topic = st.session_state.topic.strip()
     if not topic:
-        st.warning("Enter a Microsoft technology topic to begin.")
-        return
+        st.session_state.generation_error = "Enter a Microsoft technology topic to begin."
+        return False
+    st.session_state.generation_error = ""
     try:
+        if refresh:
+            search_cache.clear()
+            page_cache.clear()
         with st.spinner("Searching, reading, and organizing Microsoft Learn documentation..."):
             result = get_agent().run(topic, st.session_state.mode, st.session_state.source_count)
         st.session_state.response = result.model_dump(mode="json")
+        st.session_state.generated_at = datetime.now().strftime("%H:%M:%S")
         topics = [item for item in st.session_state.history if item.casefold() != topic.casefold()]
         st.session_state.history = [topic, *topics][:8]
+        return True
     except AgentError as exc:
-        st.error(str(exc))
+        st.session_state.generation_error = str(exc)
     except Exception:
-        st.error("The request could not be completed. Check your configuration and try again.")
+        st.session_state.generation_error = "The request could not be completed. Check your connection and try again."
+    return False
 
 
 def response_text(response: LearnResponse) -> str:
@@ -386,6 +405,19 @@ def render_response(response: LearnResponse) -> None:
         .stApp { background: #ffffff !important; background-image: none !important; color: var(--ink) !important; }
         [data-testid="stHeader"] { background: rgba(255, 255, 255, .94) !important; }
         [data-testid="stMainBlockContainer"] { max-width: 1480px; padding-top: 4.75rem; }
+        [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"]:has(.result-toolbar-marker) {
+            background: rgba(247, 250, 249, .96);
+            border: 1px solid #d9e3df;
+            border-radius: 8px;
+            box-shadow: 0 10px 28px rgba(21, 37, 31, .07);
+            margin-bottom: 1.25rem;
+            padding: .75rem;
+            position: sticky;
+            top: 3.25rem;
+            z-index: 20;
+        }
+        .result-toolbar-marker { display: none; }
+        [data-testid="stElementContainer"]:has(.result-toolbar-marker) { display: none; }
         .hero { display: none; }
         .hero-mark { color: var(--brand); }
         .hero h1, .hero p, h1, h2, h3, [data-testid="stMarkdownContainer"] p,
@@ -469,6 +501,27 @@ def render_response(response: LearnResponse) -> None:
         }
         [data-testid="stColumn"]:has(.doc-nav-title) { align-self: flex-start; position: sticky; top: 4rem; }
         @media (max-width: 900px) {
+            [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"]:has(.result-toolbar-marker) {
+                position: static;
+            }
+            [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"]:has(.result-toolbar-marker) [data-testid="stHorizontalBlock"] {
+                flex-wrap: wrap;
+                gap: .55rem;
+            }
+            [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"]:has(.result-toolbar-marker) [data-testid="stColumn"] {
+                flex: 1 1 calc(33.333% - .55rem) !important;
+                min-width: 0 !important;
+                width: auto !important;
+            }
+            [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"]:has(.result-toolbar-marker) [data-testid="stColumn"]:first-child {
+                flex-basis: 100% !important;
+            }
+            [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"]:has(.result-toolbar-marker) [data-testid="stColumn"]:nth-child(2) {
+                flex-basis: calc(65% - .55rem) !important;
+            }
+            [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"]:has(.result-toolbar-marker) [data-testid="stColumn"]:nth-child(3) {
+                flex-basis: calc(35% - .55rem) !important;
+            }
             [data-testid="stColumn"]:has(.doc-nav-title) { display: none; }
             [data-testid="stHorizontalBlock"]:has(.doc-nav-title) [data-testid="stColumn"]:not(:has(.doc-nav-title)) {
                 flex: 1 1 100% !important;
@@ -493,7 +546,7 @@ def render_response(response: LearnResponse) -> None:
     overview = response.summary[len(definition):].strip() if response.summary.startswith(definition) else response.summary
     text = response_text(response)
     family_label, family_icon, family_class = result_family(response)
-    image_source = next((source for source in response.sources if source.image_url), None)
+    image_source = response.sources[0] if response.sources and response.sources[0].image_url else None
     visual = (
         f'<div class="premium-visual"><img src="{escape(str(image_source.image_url), quote=True)}" '
         f'alt="{escape(image_source.title, quote=True)}"></div>'
@@ -524,8 +577,8 @@ def render_response(response: LearnResponse) -> None:
             f'<div class="{header_class}"><div class="premium-copy">'
             f'<div class="premium-kicker"><span data-testid="stIconMaterial">verified</span>{family_label} learning brief</div>'
             f'<h1 class="doc-title">{escape(article_title)}</h1>'
-            f'<div class="premium-meta">{source_label} · '
-            f'{len(article_notes) + 3} focused sections</div></div>{visual}</div>',
+            f'<div class="premium-meta">{source_label} · {len(article_notes) + 3} focused sections'
+            f'{f" · Updated {st.session_state.generated_at}" if st.session_state.generated_at else ""}</div></div>{visual}</div>',
             unsafe_allow_html=True,
         )
         action_source, action_copy, action_download = st.columns([1.5, 1, 1.2])
@@ -624,24 +677,27 @@ def render_response(response: LearnResponse) -> None:
 initialize_state()
 
 if st.session_state.response:
-    query_col, mode_col, source_col, generate_col, regenerate_col, clear_col = st.columns([3, 1.5, .65, 1.15, 1.15, .8])
-    with query_col:
-        st.text_input("Topic", key="topic", placeholder="Search Microsoft Learn", label_visibility="collapsed")
-    with mode_col:
-        st.selectbox("Generation mode", MODES, key="mode", label_visibility="collapsed")
-    with source_col:
-        st.number_input("Sources", min_value=1, max_value=8, key="source_count", label_visibility="collapsed")
-    with generate_col:
-        generate = st.button("Search", type="primary", icon=":material/search:", use_container_width=True)
-    with regenerate_col:
-        regenerate = st.button("Regenerate", icon=":material/refresh:", use_container_width=True)
-    with clear_col:
-        st.button("Clear", icon=":material/delete_sweep:", on_click=clear_workspace, use_container_width=True)
+    with st.container(border=True):
+        st.markdown('<span class="result-toolbar-marker"></span>', unsafe_allow_html=True)
+        query_col, mode_col, source_col, generate_col, regenerate_col, clear_col = st.columns([3, 1.5, .65, 1.15, 1.15, .8])
+        with query_col:
+            st.text_input("Topic", key="topic", placeholder="Search Microsoft Learn", label_visibility="collapsed")
+        with mode_col:
+            st.selectbox("Generation mode", MODES, key="mode", label_visibility="collapsed")
+        with source_col:
+            st.number_input("Sources", min_value=1, max_value=8, key="source_count", label_visibility="collapsed")
+        with generate_col:
+            generate = st.button("Search", type="primary", icon=":material/search:", use_container_width=True)
+        with regenerate_col:
+            regenerate = st.button("Regenerate", icon=":material/refresh:", use_container_width=True)
+        with clear_col:
+            st.button("Clear", icon=":material/delete_sweep:", on_click=clear_workspace, use_container_width=True)
 
     if generate or regenerate:
-        run_generation()
-        if st.session_state.response:
+        if run_generation(refresh=regenerate):
             st.rerun()
+    if st.session_state.generation_error:
+        st.error(st.session_state.generation_error, icon=":material/error:")
 
     try:
         render_response(LearnResponse.model_validate(st.session_state.response))
@@ -666,9 +722,10 @@ else:
             st.button("Clear", icon=":material/delete_sweep:", on_click=clear_workspace, use_container_width=True)
 
         if generate:
-            run_generation()
-            if st.session_state.response:
+            if run_generation():
                 st.rerun()
+        if st.session_state.generation_error:
+            st.error(st.session_state.generation_error, icon=":material/error:")
 
     with sidebar:
         st.subheader("Workspace")
