@@ -48,6 +48,7 @@ def test_agent_runs_complete_grounded_flow_and_validates_sources():
     assert response.definition == "Azure Functions runs event-driven code."
     assert response.summary == "Azure Functions runs event-driven code."
     assert response.notes[0].content == "Azure Functions runs event-driven code."
+    assert str(response.notes[0].image_url) == "https://learn.microsoft.com/en-us/azure/media/functions-overview.png"
     assert LearnResponse.model_validate(response.model_dump()) == response
 
 

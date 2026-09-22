@@ -31,6 +31,7 @@ def test_reader_extracts_documentation_and_removes_ui():
     assert page["title"] == "Azure Functions overview"
     assert page["headings"] == ["Azure Functions overview", "Hosting"]
     assert page["image_url"] == "https://learn.microsoft.com/en-us/azure/media/functions-overview.svg"
+    assert page["section_images"]["Hosting"] == page["image_url"]
     assert "Consumption plan" in page["content"]
     assert "```\nfunc start\nfunc azure functionapp publish example-app\n```" in page["content"]
     assert "Global navigation" not in page["content"]

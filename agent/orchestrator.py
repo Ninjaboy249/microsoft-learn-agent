@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from agent.models import LearnResponse, Source
+from agent.models import LearnResponse, Note, Source
 from services.knowledge_generator import ExtractiveKnowledgeGenerator
 from tools.content_processor import chunk_content, prepare_context
 from tools.learn_reader import LearnReaderError, MicrosoftLearnReaderTool
@@ -194,6 +194,12 @@ class MicrosoftLearnAgent:
     def validate_sources(self, response: LearnResponse, documents: list[dict]) -> LearnResponse:
         """Remove malformed, external, duplicate, or unretrieved citations."""
         retrieved = {document["url"].split("#", 1)[0]: document for document in documents}
+        trusted_images = {
+            str(image_url)
+            for document in documents
+            for image_url in [document.get("image_url"), *document.get("section_images", {}).values()]
+            if image_url and is_microsoft_learn_url(str(image_url))
+        }
         validated: list[Source] = []
         seen: set[str] = set()
         for source in response.sources:
@@ -208,4 +214,12 @@ class MicrosoftLearnAgent:
                     )
                 )
                 seen.add(url)
-        return response.model_copy(update={"sources": validated})
+        validated_notes = [
+            Note(
+                heading=note.heading,
+                content=note.content,
+                image_url=note.image_url if str(note.image_url or "") in trusted_images else None,
+            )
+            for note in response.notes
+        ]
+        return response.model_copy(update={"sources": validated, "notes": validated_notes})

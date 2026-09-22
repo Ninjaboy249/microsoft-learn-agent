@@ -20,6 +20,7 @@ class Note(BaseModel):
 
     heading: str = Field(min_length=1)
     content: str = Field(min_length=1)
+    image_url: HttpUrl | None = None
 
 
 class LearnResponse(BaseModel):

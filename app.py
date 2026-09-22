@@ -102,6 +102,32 @@ st.markdown(
     .doc-summary p { margin: 0 0 1rem; }
     .doc-summary p:last-child { margin-bottom: 0; }
     .section-anchor { scroll-margin-top: 5rem; }
+    .section-visual {
+        align-items: center;
+        background: #f4f9f7;
+        border: 1px solid #d9e3df;
+        border-left: 4px solid var(--visual-accent, var(--brand));
+        border-radius: 6px;
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: 88px minmax(0, 1fr);
+        margin: .35rem 0 1.25rem;
+        min-height: 96px;
+        overflow: hidden;
+    }
+    .section-visual.family-azure { --visual-accent: #0078d4; background: #f4f9fd; }
+    .section-visual.family-developer { --visual-accent: #512bd4; background: #f8f7fd; }
+    .section-visual.family-productivity { --visual-accent: #d83b01; background: #fff8f5; }
+    .section-visual.family-security { --visual-accent: #107c10; background: #f5faf5; }
+    .section-visual.family-windows { --visual-accent: #0067b8; background: #f4f9fc; }
+    .section-visual-icon { align-items: center; align-self: stretch; background: var(--visual-accent, var(--brand)); color: #ffffff; display: flex; justify-content: center; }
+    .section-visual-icon [data-testid="stIconMaterial"] { font-size: 2.5rem; font-variation-settings: 'FILL' 0, 'wght' 300; }
+    .section-visual-copy { padding: .9rem 1rem .9rem 0; }
+    .section-visual-copy small { color: var(--visual-accent, var(--brand)); display: block; font-size: .7rem; font-weight: 800; letter-spacing: .08em; margin-bottom: .25rem; text-transform: uppercase; }
+    .section-visual-copy strong { color: var(--ink); display: block; font: 700 1rem/1.35 'Manrope', sans-serif; }
+    .section-image { background: #f7f9f8; border: 1px solid #d9e3df; border-radius: 6px; margin: .35rem 0 1.25rem; overflow: hidden; }
+    .section-image img { display: block; height: auto; max-height: 380px; object-fit: contain; padding: 1rem; width: 100%; }
+    .section-image figcaption { border-top: 1px solid #d9e3df; color: var(--muted); font-size: .8rem; padding: .55rem .8rem; }
     .definition-callout { background: #ffffff; border: 1px solid #5ca6d6; border-left: 4px solid #0078d4; border-radius: 0 6px 6px 0; color: var(--ink); margin: 1.4rem 0; padding: 1rem 1.15rem; }
     .definition-callout strong { display: block; font: 700 1.15rem 'Manrope', sans-serif; margin-bottom: .55rem; }
     .definition-callout p { color: var(--ink) !important; font-size: 1.05rem; line-height: 1.7; margin: 0; }
@@ -307,6 +333,52 @@ def result_family(response: LearnResponse) -> tuple[str, str, str]:
     return "Microsoft Learn", "auto_stories", "learn"
 
 
+def section_icon(heading: str, default_icon: str) -> str:
+    text = heading.casefold()
+    icon_rules = (
+        (("definition", "overview", "introduction", "concept"), "menu_book"),
+        (("security", "identity", "permission", "access"), "shield"),
+        (("architecture", "design", "pattern", "structure"), "account_tree"),
+        (("install", "setup", "configure", "deploy"), "build"),
+        (("code", "develop", "function", "api", "sdk"), "code_blocks"),
+        (("data", "storage", "database", "analytics"), "database"),
+        (("network", "connect", "route"), "hub"),
+        (("scale", "performance", "monitor"), "monitoring"),
+        (("example", "sample", "scenario"), "terminal"),
+        (("reference", "source", "learn"), "library_books"),
+        (("capabilit", "feature", "benefit"), "checklist"),
+    )
+    for terms, icon in icon_rules:
+        if any(term in text for term in terms):
+            return icon
+    return default_icon
+
+
+def section_visual(
+    heading: str,
+    family_label: str,
+    family_icon: str,
+    family_class: str,
+    image_url: object | None = None,
+) -> None:
+    if image_url:
+        safe_url = escape(str(image_url), quote=True)
+        st.markdown(
+            f'<figure class="section-image"><img src="{safe_url}" alt="{escape(heading, quote=True)}">'
+            f'<figcaption>Microsoft Learn · {escape(heading)}</figcaption></figure>',
+            unsafe_allow_html=True,
+        )
+        return
+    icon = section_icon(heading, family_icon)
+    st.markdown(
+        f'<div class="section-visual family-{family_class}">'
+        f'<div class="section-visual-icon"><span data-testid="stIconMaterial">{icon}</span></div>'
+        f'<div class="section-visual-copy"><small>{escape(family_label)}</small>'
+        f'<strong>{escape(heading)}</strong></div></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_response(response: LearnResponse) -> None:
     st.markdown(
         """
@@ -481,6 +553,7 @@ def render_response(response: LearnResponse) -> None:
 
         st.markdown('<div id="definition" class="section-anchor"></div>', unsafe_allow_html=True)
         with st.expander("Definition"):
+            section_visual("Definition", family_label, family_icon, family_class, image_source.image_url if image_source else None)
             st.markdown(
                 f'<div class="definition-callout"><p>{escape(definition)}</p></div>',
                 unsafe_allow_html=True,
@@ -488,6 +561,7 @@ def render_response(response: LearnResponse) -> None:
         if overview:
             st.markdown('<div id="article-summary" class="section-anchor"></div>', unsafe_allow_html=True)
             with st.expander("Overview"):
+                section_visual("Overview", family_label, family_icon, family_class, image_source.image_url if image_source else None)
                 overview_html = "".join(
                     f"<p>{escape(paragraph)}</p>" for paragraph in readable_markdown(overview).split("\n\n")
                 )
@@ -496,6 +570,13 @@ def render_response(response: LearnResponse) -> None:
         if response.key_concepts:
             st.markdown('<div id="key-capabilities" class="section-anchor"></div>', unsafe_allow_html=True)
             with st.expander("Key capabilities"):
+                section_visual(
+                    "Key capabilities",
+                    family_label,
+                    family_icon,
+                    family_class,
+                    image_source.image_url if image_source else None,
+                )
                 st.markdown("\n".join(f"- {concept}" for concept in response.key_concepts))
 
         for note in article_notes:
@@ -504,16 +585,31 @@ def render_response(response: LearnResponse) -> None:
                 unsafe_allow_html=True,
             )
             with st.expander(note.heading):
+                section_visual(note.heading, family_label, family_icon, family_class, note.image_url)
                 st.markdown(readable_markdown(note.content))
 
         if response.examples:
             st.markdown('<div id="examples" class="section-anchor"></div>', unsafe_allow_html=True)
             with st.expander("Examples"):
+                section_visual(
+                    "Examples",
+                    family_label,
+                    family_icon,
+                    family_class,
+                    image_source.image_url if image_source else None,
+                )
                 for example in response.examples:
                     st.code(example, language=code_language(example), wrap_lines=False)
 
         st.markdown('<div id="references" class="section-anchor"></div>', unsafe_allow_html=True)
         with st.expander("References"):
+            section_visual(
+                "References",
+                family_label,
+                family_icon,
+                family_class,
+                image_source.image_url if image_source else None,
+            )
             if response.sources:
                 for source in response.sources:
                     safe_url = escape(str(source.url), quote=True)

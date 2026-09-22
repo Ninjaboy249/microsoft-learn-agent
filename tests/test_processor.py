@@ -27,12 +27,14 @@ def test_chunking_preserves_source_and_sections():
         "title": "Functions",
         "url": "https://learn.microsoft.com/en-us/functions",
         "content": "## Overview\n" + ("Azure Functions content. " * 20) + "\n## Hosting\nPremium details.",
+        "section_images": {"Hosting": "https://learn.microsoft.com/media/hosting.svg"},
     }
     chunks = chunk_content(document, chunk_size=120)
 
     assert len(chunks) > 2
     assert {chunk["section"] for chunk in chunks} >= {"Overview", "Hosting"}
     assert all(chunk["url"] == document["url"] for chunk in chunks)
+    assert next(chunk for chunk in chunks if chunk["section"] == "Hosting")["image_url"] == document["section_images"]["Hosting"]
     assert all(len(chunk["content"]) <= 120 for chunk in chunks)
 
 

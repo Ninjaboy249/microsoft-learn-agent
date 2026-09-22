@@ -147,7 +147,7 @@ class ExtractiveKnowledgeGenerator:
             if not content:
                 continue
             seen_sections.add(section.casefold())
-            notes.append(Note(heading=section, content=content[:3500]))
+            notes.append(Note(heading=section, content=content[:3500], image_url=chunk.get("image_url")))
             if len(notes) == limit:
                 break
         return notes

@@ -69,10 +69,17 @@ class MicrosoftLearnReaderTool:
         title = title_node.get_text(" ", strip=True) if title_node else "Microsoft Learn"
         image_url = MicrosoftLearnReaderTool._article_image(main, url)
         headings: list[str] = []
+        section_images: dict[str, str] = {}
         lines: list[str] = []
         seen: set[str] = set()
-        for element in main.find_all(["h1", "h2", "h3", "h4", "p", "li", "pre"]):
+        current_section = title
+        for element in main.find_all(["h1", "h2", "h3", "h4", "p", "li", "pre", "img"]):
             if isinstance(element, Tag) and element.name == "li" and element.find_parent("li"):
+                continue
+            if element.name == "img":
+                section_image = MicrosoftLearnReaderTool._trusted_image(element, url)
+                if section_image and current_section not in section_images:
+                    section_images[current_section] = section_image
                 continue
             if element.name == "pre":
                 text = textwrap.dedent(element.get_text("", strip=False)).strip("\r\n")
@@ -82,6 +89,7 @@ class MicrosoftLearnReaderTool:
                 continue
             seen.add(text)
             if element.name in {"h1", "h2", "h3", "h4"}:
+                current_section = text
                 headings.append(text)
                 lines.append(f"\n## {text}")
             elif element.name == "li":
@@ -92,20 +100,34 @@ class MicrosoftLearnReaderTool:
                 lines.append(text)
 
         content = "\n".join(lines).strip()[:MAX_PAGE_CHARACTERS]
-        return {"title": title, "url": url, "content": content, "headings": headings, "image_url": image_url}
+        return {
+            "title": title,
+            "url": url,
+            "content": content,
+            "headings": headings,
+            "image_url": image_url,
+            "section_images": section_images,
+        }
 
     @staticmethod
     def _article_image(main: Tag, page_url: str) -> str | None:
         for image in main.select("img[src]"):
-            source = urljoin(page_url, str(image.get("src", "")))
-            alt = str(image.get("alt", "")).strip()
-            if (
-                alt
-                and is_microsoft_learn_url(source)
-                and re.search(r"\.(?:png|jpe?g|webp|svg)(?:\?|$)", source, re.I)
-                and not re.search(r"(?:icon|logo|badge|avatar|open-graph)", source, re.I)
-            ):
+            source = MicrosoftLearnReaderTool._trusted_image(image, page_url)
+            if source:
                 return source
+        return None
+
+    @staticmethod
+    def _trusted_image(image: Tag, page_url: str) -> str | None:
+        source = urljoin(page_url, str(image.get("src", "")))
+        alt = str(image.get("alt", "")).strip()
+        if (
+            alt
+            and is_microsoft_learn_url(source)
+            and re.search(r"\.(?:png|jpe?g|webp|svg)(?:\?|$)", source, re.I)
+            and not re.search(r"(?:icon|logo|badge|avatar|open-graph)", source, re.I)
+        ):
+            return source
         return None
 
 

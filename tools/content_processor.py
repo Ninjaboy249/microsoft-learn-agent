@@ -53,6 +53,8 @@ def chunk_content(document: dict, chunk_size: int = 5_000) -> list[dict]:
         return []
     title = str(document.get("title", "Microsoft Learn"))
     url = str(document.get("url", ""))
+    section_images = document.get("section_images", {})
+    document_image = document.get("image_url")
     chunks: list[dict] = []
     section = title
     buffer: list[str] = []
@@ -62,7 +64,13 @@ def chunk_content(document: dict, chunk_size: int = 5_000) -> list[dict]:
     def flush() -> None:
         nonlocal buffer, buffer_length
         if buffer:
-            chunks.append({"title": title, "section": section, "content": "\n".join(buffer), "url": url})
+            chunks.append({
+                "title": title,
+                "section": section,
+                "content": "\n".join(buffer),
+                "url": url,
+                "image_url": section_images.get(section) or document_image,
+            })
             buffer = []
             buffer_length = 0
 
