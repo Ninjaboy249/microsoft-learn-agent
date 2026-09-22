@@ -64,8 +64,19 @@ st.markdown(
     .doc-nav-label { color: var(--muted); font-size: .72rem; font-weight: 800; letter-spacing: .1em; margin: 1rem 0 .45rem; text-transform: uppercase; }
     .doc-nav-link { border-left: 2px solid transparent; color: var(--muted) !important; display: block; font-size: .9rem; padding: .42rem .7rem; text-decoration: none !important; }
     .doc-nav-link:hover { background: #ffffff; border-left-color: var(--brand); color: var(--brand) !important; }
-    .doc-title { color: var(--ink); font: 750 clamp(2rem, 4vw, 3.25rem)/1.08 'Manrope', sans-serif; margin: 0 0 1rem; }
-    .doc-summary { color: var(--ink); font-size: 1.08rem; line-height: 1.75; margin: 1.25rem 0; }
+    .doc-title {
+        color: var(--ink);
+        font-family: 'Manrope', sans-serif;
+        font-size: clamp(1.85rem, 2.5vw, 2.4rem) !important;
+        font-weight: 750;
+        line-height: 1.2 !important;
+        margin: 0 0 1.25rem;
+        max-width: 28ch;
+    }
+    .doc-summary { color: var(--ink); font-size: 1.08rem; line-height: 1.8; margin: 1.25rem 0; max-width: 72ch; }
+    .doc-summary p { margin: 0 0 1rem; }
+    .doc-summary p:last-child { margin-bottom: 0; }
+    .section-anchor { border-top: 1px solid var(--line); margin-top: 2.4rem; padding-top: .25rem; }
     .definition-callout { background: #ffffff; border: 1px solid #5ca6d6; border-left: 4px solid #0078d4; border-radius: 0 6px 6px 0; color: var(--ink); margin: 1.4rem 0; padding: 1rem 1.15rem; }
     .definition-callout strong { display: block; font: 700 1.15rem 'Manrope', sans-serif; margin-bottom: .55rem; }
     .definition-callout p { color: var(--ink) !important; font-size: 1.05rem; line-height: 1.7; margin: 0; }
@@ -83,6 +94,7 @@ st.markdown(
     [data-testid="stTextInputField"]::placeholder { color: #71827b !important; opacity: 1; }
     [data-testid="stWidgetLabel"] p { color: #344a42 !important; font-weight: 700; }
     div[data-testid="stButton"] button, div[data-testid="stDownloadButton"] button,
+    div[data-testid="stPopover"] button,
     div[data-testid="stLinkButton"] a {
         border-radius: 5px !important;
         font-weight: 700 !important;
@@ -95,6 +107,7 @@ st.markdown(
     }
     div[data-testid="stButton"] button[kind="primary"]:hover { background: var(--brand-deep) !important; }
     div[data-testid="stButton"] button[kind="secondary"], div[data-testid="stDownloadButton"] button,
+    div[data-testid="stPopover"] button,
     div[data-testid="stLinkButton"] a {
         background: var(--surface) !important;
         border-color: #9fb8af !important;
@@ -102,8 +115,10 @@ st.markdown(
     }
     div[data-testid="stButton"] button[kind="secondary"] p, div[data-testid="stButton"] button[kind="secondary"] span,
     div[data-testid="stDownloadButton"] button p, div[data-testid="stDownloadButton"] button span,
+    div[data-testid="stPopover"] button p, div[data-testid="stPopover"] button span,
     div[data-testid="stLinkButton"] a p, div[data-testid="stLinkButton"] a span { color: inherit !important; }
     div[data-testid="stButton"] button[kind="secondary"]:hover, div[data-testid="stDownloadButton"] button:hover,
+    div[data-testid="stPopover"] button:hover,
     div[data-testid="stLinkButton"] a:hover {
         background: #e7f2ee !important;
         border-color: var(--brand) !important;
@@ -219,6 +234,38 @@ def code_language(value: str) -> str | None:
     return None
 
 
+def readable_markdown(value: str, sentences_per_paragraph: int = 2) -> str:
+    """Add visual breathing room without changing extracted wording."""
+    blocks: list[str] = []
+    prose: list[str] = []
+
+    def flush_prose() -> None:
+        if not prose:
+            return
+        text = " ".join(prose)
+        sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text) if part.strip()]
+        blocks.extend(
+            " ".join(sentences[index : index + sentences_per_paragraph])
+            for index in range(0, len(sentences), sentences_per_paragraph)
+        )
+        prose.clear()
+
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        if not line:
+            flush_prose()
+        elif re.match(r"^(?:[-*+] |\d+[.)] )", line):
+            flush_prose()
+            if blocks and re.match(r"^(?:[-*+] |\d+[.)] )", blocks[-1]):
+                blocks[-1] = f"{blocks[-1]}\n{line}"
+            else:
+                blocks.append(line)
+        else:
+            prose.append(line)
+    flush_prose()
+    return "\n\n".join(blocks)
+
+
 def render_response(response: LearnResponse) -> None:
     st.markdown(
         """
@@ -235,11 +282,29 @@ def render_response(response: LearnResponse) -> None:
         [data-testid="stSelectbox"] div[role="group"] { background: #ffffff !important; border-color: #9fb8af !important; }
         [data-testid="stTextInputField"], [data-testid="stNumberInputField"], [data-testid="stSelectbox"] input { color: var(--ink) !important; }
         [data-testid="stSidebar"] { background: #ffffff !important; border-color: var(--line) !important; }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] { max-width: 72ch; }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] p,
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] li {
+            font-size: 1.02rem;
+            line-height: 1.75;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] p { margin-bottom: 1rem; }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] ul,
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] ol {
+            margin: .45rem 0 1.15rem;
+            padding-left: 1.4rem;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stMarkdownContainer"] li {
+            margin-bottom: .45rem;
+            padding-left: .2rem;
+        }
         div[data-testid="stButton"] button[kind="secondary"], div[data-testid="stDownloadButton"] button,
+        div[data-testid="stPopover"] button,
         div[data-testid="stLinkButton"] a {
             background: #ffffff !important; border-color: #9fb8af !important; color: #163a32 !important;
         }
         div[data-testid="stButton"] button[kind="secondary"]:hover, div[data-testid="stDownloadButton"] button:hover,
+        div[data-testid="stPopover"] button:hover,
         div[data-testid="stLinkButton"] a:hover {
             background: #ffffff !important; border-color: var(--brand) !important;
         }
@@ -250,7 +315,7 @@ def render_response(response: LearnResponse) -> None:
                 flex: 1 1 100% !important;
                 width: 100% !important;
             }
-            .doc-title { margin-top: .5rem; }
+            .doc-title { font-size: 2rem !important; margin-top: .5rem; }
         }
         </style>
         """,
@@ -315,25 +380,31 @@ def render_response(response: LearnResponse) -> None:
         if overview:
             st.markdown('<div id="article-summary"></div>', unsafe_allow_html=True)
             st.header("Overview")
-            st.markdown(f'<div class="doc-summary">{escape(overview)}</div>', unsafe_allow_html=True)
+            overview_html = "".join(
+                f"<p>{escape(paragraph)}</p>" for paragraph in readable_markdown(overview).split("\n\n")
+            )
+            st.markdown(f'<div class="doc-summary">{overview_html}</div>', unsafe_allow_html=True)
 
         if response.key_concepts:
-            st.markdown('<div id="key-capabilities"></div>', unsafe_allow_html=True)
+            st.markdown('<div id="key-capabilities" class="section-anchor"></div>', unsafe_allow_html=True)
             st.header("Key capabilities")
             st.markdown("\n".join(f"- {concept}" for concept in response.key_concepts))
 
         for note in article_notes:
-            st.markdown(f'<div id="{section_id(note.heading)}"></div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div id="{section_id(note.heading)}" class="section-anchor"></div>',
+                unsafe_allow_html=True,
+            )
             st.header(note.heading)
-            st.markdown(note.content)
+            st.markdown(readable_markdown(note.content))
 
         if response.examples:
-            st.markdown('<div id="examples"></div>', unsafe_allow_html=True)
+            st.markdown('<div id="examples" class="section-anchor"></div>', unsafe_allow_html=True)
             st.header("Examples")
             for example in response.examples:
                 st.code(example, language=code_language(example), wrap_lines=False)
 
-        st.markdown('<div id="references"></div>', unsafe_allow_html=True)
+        st.markdown('<div id="references" class="section-anchor"></div>', unsafe_allow_html=True)
         st.header("References")
         if response.sources:
             for source in response.sources:
