@@ -101,7 +101,7 @@ st.markdown(
     .doc-summary { color: var(--ink); font-size: 1.08rem; line-height: 1.8; margin: 1.25rem 0; max-width: 72ch; }
     .doc-summary p { margin: 0 0 1rem; }
     .doc-summary p:last-child { margin-bottom: 0; }
-    .section-anchor { border-top: 1px solid var(--line); margin-top: 2.4rem; padding-top: .25rem; }
+    .section-anchor { scroll-margin-top: 5rem; }
     .definition-callout { background: #ffffff; border: 1px solid #5ca6d6; border-left: 4px solid #0078d4; border-radius: 0 6px 6px 0; color: var(--ink); margin: 1.4rem 0; padding: 1rem 1.15rem; }
     .definition-callout strong { display: block; font: 700 1.15rem 'Manrope', sans-serif; margin-bottom: .55rem; }
     .definition-callout p { color: var(--ink) !important; font-size: 1.05rem; line-height: 1.7; margin: 0; }
@@ -347,6 +347,44 @@ def render_response(response: LearnResponse) -> None:
             margin-bottom: .45rem;
             padding-left: .2rem;
         }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] {
+            background: #ffffff;
+            border: 1px solid #d9e3df;
+            border-radius: 6px;
+            margin-top: .75rem;
+            overflow: hidden;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] details > summary {
+            align-items: center;
+            min-height: 3.6rem;
+            padding: .2rem .35rem;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] details > summary > span:first-child > span:first-child {
+            display: none;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] details > summary::before {
+            color: var(--brand);
+            content: '+';
+            font: 700 1.35rem/1 'Manrope', sans-serif;
+            margin: 0 .35rem 0 .5rem;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] details[open] > summary::before {
+            content: '−';
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] details > summary:hover {
+            background: #f3f8f6;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] details[open] > summary {
+            background: #f3f8f6 !important;
+            color: var(--ink) !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(.doc-nav-title) > [data-testid="stColumn"]:nth-child(2) [data-testid="stExpander"] details > summary p {
+            color: var(--ink) !important;
+            font-family: 'Manrope', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0;
+        }
         div[data-testid="stButton"] button[kind="secondary"], div[data-testid="stDownloadButton"] button,
         div[data-testid="stPopover"] button,
         div[data-testid="stLinkButton"] a {
@@ -397,7 +435,7 @@ def render_response(response: LearnResponse) -> None:
         f'<div class="doc-breadcrumb"><span>Learn</span> &nbsp;›&nbsp; Microsoft Azure &nbsp;›&nbsp; {escape(response.topic)}</div>',
         unsafe_allow_html=True,
     )
-    topic_nav, article, article_nav = st.columns([1.15, 3.5, 1.2], gap="large")
+    topic_nav, article = st.columns([1.15, 4.7], gap="large")
 
     with topic_nav:
         st.markdown(
@@ -441,61 +479,50 @@ def render_response(response: LearnResponse) -> None:
                 on_click="ignore",
             )
 
-        st.markdown('<div id="definition" class="doc-rule"></div>', unsafe_allow_html=True)
-        st.markdown(
-            f'<div class="definition-callout"><strong>Definition</strong><p>{escape(definition)}</p></div>',
-            unsafe_allow_html=True,
-        )
-        if overview:
-            st.markdown('<div id="article-summary"></div>', unsafe_allow_html=True)
-            st.header("Overview")
-            overview_html = "".join(
-                f"<p>{escape(paragraph)}</p>" for paragraph in readable_markdown(overview).split("\n\n")
+        st.markdown('<div id="definition" class="section-anchor"></div>', unsafe_allow_html=True)
+        with st.expander("Definition"):
+            st.markdown(
+                f'<div class="definition-callout"><p>{escape(definition)}</p></div>',
+                unsafe_allow_html=True,
             )
-            st.markdown(f'<div class="doc-summary">{overview_html}</div>', unsafe_allow_html=True)
+        if overview:
+            st.markdown('<div id="article-summary" class="section-anchor"></div>', unsafe_allow_html=True)
+            with st.expander("Overview"):
+                overview_html = "".join(
+                    f"<p>{escape(paragraph)}</p>" for paragraph in readable_markdown(overview).split("\n\n")
+                )
+                st.markdown(f'<div class="doc-summary">{overview_html}</div>', unsafe_allow_html=True)
 
         if response.key_concepts:
             st.markdown('<div id="key-capabilities" class="section-anchor"></div>', unsafe_allow_html=True)
-            st.header("Key capabilities")
-            st.markdown("\n".join(f"- {concept}" for concept in response.key_concepts))
+            with st.expander("Key capabilities"):
+                st.markdown("\n".join(f"- {concept}" for concept in response.key_concepts))
 
         for note in article_notes:
             st.markdown(
                 f'<div id="{section_id(note.heading)}" class="section-anchor"></div>',
                 unsafe_allow_html=True,
             )
-            st.header(note.heading)
-            st.markdown(readable_markdown(note.content))
+            with st.expander(note.heading):
+                st.markdown(readable_markdown(note.content))
 
         if response.examples:
             st.markdown('<div id="examples" class="section-anchor"></div>', unsafe_allow_html=True)
-            st.header("Examples")
-            for example in response.examples:
-                st.code(example, language=code_language(example), wrap_lines=False)
+            with st.expander("Examples"):
+                for example in response.examples:
+                    st.code(example, language=code_language(example), wrap_lines=False)
 
         st.markdown('<div id="references" class="section-anchor"></div>', unsafe_allow_html=True)
-        st.header("References")
-        if response.sources:
-            for source in response.sources:
-                safe_url = escape(str(source.url), quote=True)
-                st.markdown(
-                    f'<a class="doc-source" href="{safe_url}" target="_blank">{escape(source.title)} ↗</a>',
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.info("No retrieved references are available for this response.")
-
-    with article_nav:
-        st.markdown(
-            '<div class="doc-nav-title">In this answer</div>'
-            '<a class="doc-nav-link" href="#definition">Definition</a>'
-            + ('<a class="doc-nav-link" href="#article-summary">Overview</a>' if overview else '')
-            + ('<a class="doc-nav-link" href="#key-capabilities">Key capabilities</a>' if response.key_concepts else '')
-            + note_links
-            + ('<a class="doc-nav-link" href="#examples">Examples</a>' if response.examples else '')
-            + '<a class="doc-nav-link" href="#references">References</a>',
-            unsafe_allow_html=True,
-        )
+        with st.expander("References"):
+            if response.sources:
+                for source in response.sources:
+                    safe_url = escape(str(source.url), quote=True)
+                    st.markdown(
+                        f'<a class="doc-source" href="{safe_url}" target="_blank">{escape(source.title)} ↗</a>',
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.info("No retrieved references are available for this response.")
 
 
 initialize_state()
